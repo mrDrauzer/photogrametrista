@@ -1,0 +1,36 @@
+{
+  "name": "photogrametrista-frontend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-router-dom": "^6.22.0",
+    "@mui/material": "^5.15.10",
+    "@mui/icons-material": "^5.15.10",
+    "@emotion/react": "^11.11.3",
+    "@emotion/styled": "^11.11.0",
+    "leaflet": "^1.9.4",
+    "react-leaflet": "^4.2.1",
+    "react-leaflet-cluster": "^2.1.0",
+    "@geoman-io/leaflet-geoman-free": "^2.16.0",
+    "axios": "^1.6.7",
+    "three": "^0.160.0",
+    "@react-three/fiber": "^8.15.16",
+    "@react-three/drei": "^9.96.1",
+    "recharts": "^2.12.1",
+    "leaflet-omnivore": "^0.3.4"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "vite": "^5.1.0",
+    "vitest": "^1.6.0"
+  }
+}

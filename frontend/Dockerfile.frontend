@@ -1,0 +1,24 @@
+# Build stage
+FROM node:20-slim as build
+
+WORKDIR /app
+
+COPY package.json ./
+RUN npm install
+
+COPY . .
+RUN npm test
+RUN npm run build
+
+# Final stage
+FROM nginx:alpine
+
+# healthcheck в docker-compose использует `wget`, но в `nginx:alpine` его может не быть.
+# Без этого контейнер помечается как unhealthy, хотя сайт работает.
+RUN apk add --no-cache wget
+
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
