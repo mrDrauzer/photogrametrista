@@ -119,8 +119,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '8'
-          memory: 32G
+          cpus: '28'
+          memory: 110G
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     depends_on:
       redis:
         condition: service_healthy
@@ -233,19 +238,63 @@ services:
     networks:
       - photogrametrista_net
 
+  webodm-db:
+    image: opendronemap/webodm_db
+    container_name: webodm-db
+    volumes:
+      - webodm_db:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - photogrametrista_net
+
+  webodm-broker:
+    image: redis:7.0.10
+    container_name: webodm-broker
+    restart: unless-stopped
+    networks:
+      - photogrametrista_net
+
+  webodm-worker:
+    image: opendronemap/webodm_webapp
+    container_name: webodm-worker
+    entrypoint: /bin/bash -c "/webodm/wait-for-postgres.sh webodm-db /webodm/wait-for-it.sh -t 0 webodm-broker:6379 -- /webodm/wait-for-it.sh -t 0 webodm:8000 -- /webodm/worker.sh start"
+    volumes:
+      - webodm_app:/webodm/app/media
+    depends_on:
+      - webodm-db
+      - webodm-broker
+    environment:
+      - WO_BROKER=redis://webodm-broker:6379/0
+      - WO_DEBUG=NO
+      - WO_SECRET_KEY=${WO_SECRET_KEY:-}
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
+    restart: unless-stopped
+    networks:
+      - photogrametrista_net
+
   webodm:
-    image: opendronemap/webodm
+    image: opendronemap/webodm_webapp
     container_name: webodm
+    entrypoint: /bin/bash -c "service cron start && chmod +x /webodm/*.sh && /bin/bash -c \"/webodm/wait-for-postgres.sh webodm-db /webodm/wait-for-it.sh -t 0 webodm-broker:6379 -- /webodm/start.sh\""
     environment:
       - WO_PORT=8000
       - WO_HOST=webodm
+      - WO_DEBUG=NO
+      - WO_BROKER=redis://webodm-broker:6379/0
+      - WO_DEV=NO
+      - WO_DEV_WATCH_PLUGINS=NO
+      - WO_SECRET_KEY=${WO_SECRET_KEY:-}
+      - WEB_CONCURRENCY=${WEB_CONCURRENCY:-2}
     ports:
       - "8002:8000"
     volumes:
-      - webodm_db:/var/lib/postgresql/data
-      - webodm_app:/var/www/webodm/app/media
+      - webodm_app:/webodm/app/media
     depends_on:
+      - webodm-db
+      - webodm-broker
+      - webodm-worker
       - nodeodm
+    restart: unless-stopped
     networks:
       - photogrametrista_net
 

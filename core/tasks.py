@@ -45,16 +45,24 @@ def process_orthophoto_internal(images, output_path):
         
         from OrthoStitcher.OrthoScript import stitch_images
         
-        # Чтобы не упасть по памяти (8GB RAM), ограничим количество снимков для демо-сшивки
-        # или будем уменьшать их масштаб. Для 480 снимков нужна серьезная фотограмметрия.
-        # OrthoStitcher — это последовательная сшивка, она может накапливать ошибку и требовать много памяти.
-        max_images = 120 # Увеличиваем лимит, чтобы покрыть 108 снимков пользователя
-        target_width = 1600 # Увеличиваем разрешение сшивки для лучшей детализации
+        # На вашем мощном железе (32 ядра, 256GB RAM, RTX 3090) мы можем обрабатывать 
+        # гораздо больше снимков в высоком качестве.
+        max_images = 500 # Поднимаем лимит до 500
+        
+        # Улучшаем качество: даже при большом количестве снимков оставляем высокое разрешение
+        if len(images) > 400:
+            target_width = 400 # Сильное снижение для предотвращения SIGKILL
+        elif len(images) > 200:
+            target_width = 600
+        elif len(images) > 100:
+            target_width = 800
+        else:
+            target_width = 1024 # Снижаем для стабильности
         
         selected_images = images[:max_images]
         cv_images = []
         
-        print(f"DEBUG: Loading {len(selected_images)} images for stitching...")
+        print(f"DEBUG: Loading {len(selected_images)} images for stitching (target_width: {target_width})...")
         for img_path in selected_images:
             img = cv2.imread(img_path)
             if img is not None:
@@ -72,7 +80,8 @@ def process_orthophoto_internal(images, output_path):
             
         print(f"DEBUG: Starting stitch_images with {len(cv_images)} images...")
         # Уменьшаем blend_width для экономии памяти при больших холстах
-        result = stitch_images(cv_images, blend_width=20)
+        # Используем обновленный stitch_images с поддержкой target_width (хотя мы уже уменьшили их выше)
+        result = stitch_images(cv_images, blend_width=15, target_width=target_width)
         
         if result is not None:
             cv2.imwrite(output_path, result)
@@ -343,12 +352,20 @@ def process_photogrammetry(self, project_id, quality='MEDIUM', branch_id=None, o
     images = [f.file.path for f in project.files.all() if f.file]
     stitching_success = False
     
-    if images and 3 <= len(images) <= 200:
+    # ЛОГИКА: если stitch_images вернет результат, он сохранится в ortho_path.
+    # Если будет SIGKILL — воркер упадет и этот код не выполнится.
+    if images and 3 <= len(images) <= 500: # Лимит 500
         try:
+            task_record.logs += f"[INFO] Запуск алгоритма сшивки для {len(images)} снимков...\n"
+            task_record.save()
             res_ortho = process_orthophoto_internal(images, ortho_path)
-            if res_ortho:
+            if res_ortho and os.path.exists(ortho_path):
                 stitching_success = True
+                task_record.logs += "[INFO] Сшивка успешно завершена.\n"
+            else:
+                task_record.logs += "[WARNING] Сшивка не удалась, переход к запасному варианту.\n"
         except Exception as e:
+            task_record.logs += f"[ERROR] Ошибка при сшивке: {e}\n"
             print(f"Stitching failed: {e}")
             
     if not stitching_success:
@@ -360,14 +377,14 @@ def process_photogrammetry(self, project_id, quality='MEDIUM', branch_id=None, o
                 img = Image.open(images[0])
                 img.thumbnail((2048, 2048)) # Ограничим размер
                 img.save(ortho_path)
-                task_record.logs += f"[INFO] Использован первый снимок проекта в качестве обзорного ортоплана (сшивка {len(images)} снимков пропущена для экономии памяти).\n"
+                task_record.logs += f"[INFO] Использован первый снимок проекта в качестве обзорного ортоплана (сшивка {len(images)} снимков пропущена или не удалась).\n"
                 stitching_success = True
             except Exception as e:
                 print(f"Failed to use first image as fallback: {e}")
         
         if not stitching_success:
             shutil.copy(demo_ortho_path, ortho_path)
-            task_record.logs += "[INFO] Используется демонстрационный ортофотоплан (сшивка пропущена).\n"
+            task_record.logs += "[INFO] Используется демонстрационный ортофотоплан (заглушка).\n"
         
         task_record.save()
     
@@ -375,48 +392,68 @@ def process_photogrammetry(self, project_id, quality='MEDIUM', branch_id=None, o
     # Т.к. OrthoStitcher делает PNG без привязки, создаем World File (.tfw / .pgw)
     # Используем область проекта (project.area) или EXIF первого фото
     pgw_path = ortho_path.replace('.png', '.pgw')
-    # Имитируем привязку: 1 пиксель = 0.025 метра
-    # [A: x-scale, D: y-rotation, B: x-rotation, E: y-scale, C: x-origin, F: y-origin]
-    # Т.к. PNG обычно 1024x1024 или около того, а градусы маленькие, 
-    # масштаб должен быть очень маленьким для покрытия области.
-    # Для отладки используем фиксированный размер пикселя в градусах (примерно 2.5см)
-    pixel_size = 0.00000025 
+    
+    # Расчет охвата и привязки
+    try:
+        from PIL import Image
+        img_temp = Image.open(ortho_path)
+        w_img, h_img = img_temp.size
+    except:
+        w_img, h_img = 1024, 1024
+
+    # Имитируем привязку: 1 пиксель = 0.025 метра (базовый)
+    pixel_size_x = 0.00000025 
+    pixel_size_y = 0.00000025
     origin_x = 37.6176
     origin_y = 55.7558
+    
+    # Попробуем извлечь координаты из файлов проекта, если области нет
+    if not project.area and images:
+        try:
+            # Берем средние координаты всех снимков как центр
+            valid_coords = project.files.exclude(latitude__isnull=True, longitude__isnull=True)
+            if valid_coords.exists():
+                from django.db.models import Avg
+                avg_coords = valid_coords.aggregate(Avg('latitude'), Avg('longitude'))
+                origin_x = avg_coords['longitude__avg']
+                origin_y = avg_coords['latitude__avg']
+        except Exception as e:
+            print(f"Error calculating center from files: {e}")
+
     if project.area and project.area.extent:
-        origin_x = project.area.extent[0]
-        origin_y = project.area.extent[3] # Верхний левый угол
+        extent = project.area.extent
+        # extent: [min_x, min_y, max_x, max_y]
+        origin_x = extent[0]
+        origin_y = extent[3] # Верхний левый угол
         
         # Если есть область, попробуем подогнать масштаб под нее, 
         # чтобы ImageOverlay сел ровно.
         try:
-            from PIL import Image
-            img_temp = Image.open(ortho_path)
-            w_img, h_img = img_temp.size
-            extent = project.area.extent
-            # extent: [min_x, min_y, max_x, max_y]
             width_geo = extent[2] - extent[0]
             height_geo = extent[3] - extent[1]
             if w_img > 0 and h_img > 0:
-                scale_x = width_geo / w_img
-                scale_y = height_geo / h_img
-                pixel_size_x = scale_x
-                pixel_size_y = scale_y
-            else:
-                pixel_size_x = pixel_size
-                pixel_size_y = pixel_size
+                pixel_size_x = width_geo / w_img
+                pixel_size_y = height_geo / h_img
         except Exception as e:
             print(f"Error calculating precise scale: {e}")
-            pixel_size_x = pixel_size
-            pixel_size_y = pixel_size
-    else:
-        pixel_size_x = pixel_size
-        pixel_size_y = pixel_size
     
     with open(pgw_path, 'w') as f:
         f.write(f"{pixel_size_x}\n0.0\n0.0\n-{pixel_size_y}\n{origin_x}\n{origin_y}\n")
 
+    # Создаем bounds для Orthophoto (Polygon)
+    # Если области проекта нет, создаем полигон на основе рассчитанных масштабов
+    from django.contrib.gis.geos import Polygon
+    if project.area:
+        ortho_bounds = project.area
+    else:
+        # Создаем прямоугольник от origin_x, origin_y
+        max_x = origin_x + (pixel_size_x * w_img)
+        min_y = origin_y - (pixel_size_y * h_img)
+        ortho_bounds = Polygon.from_bbox((origin_x, min_y, max_x, origin_y))
+
     # 2. Генерация тайлов
+    task_record.logs += "[INFO] Генерация тайлов для карты...\n"
+    task_record.save()
     tiles_url = generate_tiles(ortho_path, f"{project.id}_{int(time.time())}")
     
     # 3. Создание Orthophoto объекта
@@ -424,7 +461,7 @@ def process_photogrammetry(self, project_id, quality='MEDIUM', branch_id=None, o
         project=project,
         name=task_record.name,
         file_path=f'artifacts/{ortho_filename}',
-        bounds=project.area, # Используем область проекта
+        bounds=ortho_bounds, # Используем рассчитанные границы
         resolution=2.5, # 2.5 см/пикс
         tiles_url=tiles_url
     )

@@ -153,3 +153,7 @@ prometheus_data/
 grafana_data/
 loki_data/
 certbot/
+
+# External vendor sources (keep outside repo)
+WebODM-master/
+metashape-scripts-master/

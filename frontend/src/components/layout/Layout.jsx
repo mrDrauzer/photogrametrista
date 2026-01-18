@@ -28,7 +28,7 @@ const darkTheme = createTheme({
   },
 });
 
-const Layout = ({ children, sidebar, rightPanel, publicMode = false }) => {
+const Layout = ({ children, sidebar, rightPanel, rightPanelWidth = 350, publicMode = false }) => {
   const [notifications, setNotifications] = useState([]);
   const [globalLogs, setGlobalLogs] = useState([]);
   const [profile, setProfile] = useState(null);
@@ -218,8 +218,18 @@ const Layout = ({ children, sidebar, rightPanel, publicMode = false }) => {
 
           {/* Right Panel */}
           {rightPanel && (
-            <Box sx={{ width: 350, borderLeft: '1px solid #333', bgcolor: '#1e1e1e', display: 'flex', flexDirection: 'column' }}>
-                {rightPanel}
+            <Box
+              sx={{
+                width: rightPanelWidth,
+                borderLeft: '1px solid #333',
+                bgcolor: '#1e1e1e',
+                display: 'flex',
+                flexDirection: 'column',
+                position: 'relative',
+                transition: 'width 0.1s'
+              }}
+            >
+              {rightPanel}
             </Box>
           )}
         </Box>

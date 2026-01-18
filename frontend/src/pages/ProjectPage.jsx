@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import Layout from '../components/layout/Layout';
+import ResizeHandle from '../components/ResizeHandle';
 import MapView from '../components/map/MapView';
 import ModelViewer from '../components/map/ModelViewer';
 import { 
@@ -52,6 +53,7 @@ import {
 } from '../api/client';
 
 import { API_UNAVAILABLE_MESSAGE, CREATE_PROJECT_FAILED_MESSAGE, isNetworkError } from '../api/errors';
+import useResizable from '../hooks/useResizable';
 
 const ProjectPage = ({ publicMode = false }) => {
   const { id } = useParams();
@@ -100,6 +102,12 @@ const ProjectPage = ({ publicMode = false }) => {
   const [loading, setLoading] = useState(true);
   const [password, setPassword] = useState('');
   const [passwordRequired, setPasswordRequired] = useState(false);
+  const { width: rightPanelWidth, handleMouseDown: handleResizeMouseDown } = useResizable({
+    storageKey: 'projectRightPanelWidth',
+    defaultWidth: 350,
+    minWidth: 250,
+    maxWidth: 800
+  });
 
   // ВАЖНО (регрессия «белый экран»):
   // Если бэкенд (Django) недоступен, мы не должны «ронять» React из-за необработанных ошибок запросов.
@@ -108,6 +116,10 @@ const ProjectPage = ({ publicMode = false }) => {
   const [apiUnavailableMessage, setApiUnavailableMessage] = useState('');
   const [creatingProject, setCreatingProject] = useState(false);
   const [fitTrigger, setFitTrigger] = useState(0);
+
+  useEffect(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, [rightPanelWidth]);
   
   // Create Project Dialog State
   const [openDialog, setOpenDialog] = useState(false);
@@ -1199,7 +1211,9 @@ const ProjectPage = ({ publicMode = false }) => {
   };
 
   const rightPanel = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <>
+      <ResizeHandle onMouseDown={handleResizeMouseDown} />
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
             {Object.keys(uploadProgress).length > 0 && (
                 <Box sx={{ mb: 2 }}>
                     <Typography variant="caption" sx={{ color: 'primary.main' }}>ЗАГРУЗКА ФАЙЛОВ...</Typography>
@@ -2326,7 +2340,8 @@ const ProjectPage = ({ publicMode = false }) => {
           </Box>
         )}
       </Box>
-    </Box>
+      </Box>
+    </>
   );
 
   const handleWaypointCreated = useCallback((latlng) => {
@@ -2377,7 +2392,7 @@ const ProjectPage = ({ publicMode = false }) => {
   }
 
     return (
-        <Layout sidebar={!publicMode && sidebar} rightPanel={rightPanel} publicMode={publicMode}>
+    <Layout sidebar={!publicMode && sidebar} rightPanel={rightPanel} rightPanelWidth={rightPanelWidth} publicMode={publicMode}>
       {apiUnavailable && (
         <Box sx={{ position: 'absolute', top: 10, left: 10, zIndex: 2000, maxWidth: 520 }}>
           <Alert
