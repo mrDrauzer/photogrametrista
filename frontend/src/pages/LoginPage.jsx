@@ -33,7 +33,7 @@ const LoginPage = () => {
             background: 'radial-gradient(circle, #1a1a1a 0%, #000000 100%)'
         }}>
             <Container maxWidth="xs">
-                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', mt: -6.25 }}>
                     <Paper sx={{ p: 4, width: '100%', bgcolor: '#1e1e1e', border: '1px solid #333', color: 'white' }}>
                         <Typography variant="h5" align="center" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
                             ВХОД В СИСТЕМУ

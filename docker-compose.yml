@@ -233,8 +233,8 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4'
-          memory: 16G
+          cpus: '20'
+          memory: 200G
     networks:
       - photogrametrista_net
 
@@ -264,6 +264,7 @@ services:
       - webodm-db
       - webodm-broker
     environment:
+      - WO_DATABASE_HOST=webodm-db
       - WO_BROKER=redis://webodm-broker:6379/0
       - WO_DEBUG=NO
       - WO_SECRET_KEY=${WO_SECRET_KEY:-}
@@ -279,6 +280,7 @@ services:
     environment:
       - WO_PORT=8000
       - WO_HOST=webodm
+      - WO_DATABASE_HOST=webodm-db
       - WO_DEBUG=NO
       - WO_BROKER=redis://webodm-broker:6379/0
       - WO_DEV=NO

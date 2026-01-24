@@ -1,133 +1,77 @@
-# photogrametrista: Docker Инфраструктура
+# photogrametrista: Профессиональная Платформа Фотограмметрии
 
-Полноценный Docker-стек для Django проекта с поддержкой PostGIS, Redis, Celery и автоматическим SSL через Let's Encrypt.
+Полноценная SaaS-платформа для промышленной фотограмметрической обработки данных и ГИС-анализа. Система включает в себя фронтенд на React, бэкенд на Django с PostGIS, распределенную обработку задач через Celery и глубокую интеграцию с движком **WebODM**.
 
-## Технологический стек
-- **Django 5.x** + **Gunicorn** (Python 3.12)
-- **PostgreSQL 15** + **PostGIS 3.4** (Геоданные)
-- **Redis 7** (Брокер для Celery)
-- **Celery** (Фоновые задачи: загрузка с Яндекс.Диска, обработка фото)
-- **React 18** + **Vite** (Фронтенд)
-- **Nginx** (Проксирование и статика)
-- **Certbot** (SSL сертификаты Let's Encrypt)
-- **Prometheus & Grafana** (Мониторинг и метрики)
-- **Loki & Promtail** (Сбор и анализ логов)
-- **Django Rest Framework** (API, JWT аутентификация, профили пользователей)
-- **Three.js / React Three Fiber** (3D визуализация, измерения дистанции и площади, аннотации)
-- **Leaflet** (2D карты, ГИС-данные, кластеризация маркеров)
+## 🏗 Структура проекта
 
-## WebODM (ортфофотопланы)
-В составе Docker-стека поднимаются готовые образы WebODM:
-- `opendronemap/webodm_webapp` (веб-интерфейс и API)
-- `opendronemap/webodm_db` (PostgreSQL для WebODM)
-- `webodm-broker` и `webodm-worker` (очереди и воркеры)
-
-WebODM доступен по адресу `http://localhost:8002`. Для взаимодействия с API используется переменная `WEBODM_URL` (см. `.env`).
-
-## Локальные артефакты и внешние исходники
-В репозитории не хранятся тяжёлые артефакты и сторонние исходники. Локально могут появляться:
-- `media/`, `static/`, `mbtiles/` — пользовательские файлы и результаты обработки (исключены из Git).
-- `prometheus_data/`, `grafana_data/`, `loki_data/`, `certbot/` — данные инфраструктурных сервисов (исключены из Git).
-- Демо‑артефакты в `media/artifacts` — хранить локально, не коммитить.
-
-Исходники WebODM и внешние наборы скриптов (например, Metashape) следует держать отдельно и подключать при необходимости, а не складывать в корень проекта.
-
-## Структура файлов
-- `docker-compose.yml` - Описание всех сервисов.
-- `Dockerfile.django` - Оптимизированный multi-stage build.
-- `nginx/nginx.conf` - Конфигурация веб-сервера (HTTP/HTTPS).
-- `deploy.sh` - Скрипт быстрого деплоя (миграции, статика).
-- `init-letsencrypt.sh` - Инициализация SSL сертификатов.
-- `backup.sh` - Скрипт для бэкапа базы данных.
-- `.env.example` - Шаблон переменных окружения.
-
-## Быстрый старт (Ubuntu/Debian)
-
-### 1. Подготовка сервера
-```bash
-sudo apt update && sudo apt install -y docker.io docker-compose git
-git clone git@github.com:mrDrauzer/photogrametrista.git
-cd photogrametrista
+```text
+photogrametrista/
+├── core/                   # Основное Django-приложение (модели, задачи, API)
+│   ├── tasks.py            # Celery задачи (интеграция с WebODM, NDVI, экспорт)
+│   ├── webodm_client.py    # Клиент для связи с API WebODM
+│   └── tests.py            # Тесты бэкенда
+├── photogrametrista/       # Настройки Django и конфигурация Celery
+├── frontend/               # React-приложение (Vite, MUI, Leaflet, Three.js)
+│   ├── src/pages/          # Страницы (Dashboard, ProjectPage, MapView)
+│   └── src/api/            # Клиент для взаимодействия с бэкендом
+├── nginx/                  # Конфигурация Nginx (проксирование, SSL, статика)
+├── prometheus/             # Настройки мониторинга Prometheus
+├── promtail/               # Конфигурация сбора логов Promtail
+├── Dockerfile.django       # Образ для Django и Celery (на базе Poetry)
+├── docker-compose.yml      # Описание всей инфраструктуры (20+ сервисов)
+└── pyproject.toml          # Управление зависимостями (Poetry)
 ```
 
-### 2. Настройка переменных
-```bash
-cp .env.example .env
-nano .env
-```
-Обязательно укажите:
-- `POSTGRES_PASSWORD`
-- `YADISK_TOKEN`
-- `DOMAIN_NAME` (ваш домен)
-- `EMAIL` (для Let's Encrypt)
+## 🛠 Технологический стек
+- **Backend**: Django 6.0+, DRF, PostGIS, SimpleJWT.
+- **Frontend**: React 18, Vite, MUI 5, Leaflet (2D), Three.js (3D).
+- **Processing**: **WebODM / NodeODM** (профессиональный движок сшивки).
+- **Infrastructure**: Docker, Nginx, Celery, Redis, PostgreSQL.
+- **Monitoring**: Prometheus, Grafana, Loki, Promtail.
+- **Dependency Management**: **Poetry**.
 
-### 3. Первый запуск с SSL
-Если у вас есть домен и он направлен на сервер:
-```bash
-chmod +x init-letsencrypt.sh
-./init-letsencrypt.sh yourdomain.com your@email.com
-```
+## 🏗 Архитектура
+Подробная схема взаимодействия всех контейнеров и описание компонентов доступны в отдельном файле:
+👉 **[ARCHITECTURE.md](./ARCHITECTURE.md)**
 
-Если вы хотите запустить локально без SSL (только HTTP):
-```bash
-chmod +x deploy.sh
-./deploy.sh
-```
+## 🚀 Быстрый старт (Docker)
 
-## Обслуживание
+Для запуска всей инфраструктуры (включая WebODM и мониторинг):
 
-### Бэкап базы данных
-Скрипт создает SQL дамп в папке `./backups` и удаляет бэкапы старше 7 дней.
-```bash
-chmod +x backup.sh
-./backup.sh
-```
+1. **Подготовка**:
+   ```powershell
+   cp .env.example .env
+   ```
+2. **Запуск**:
+   ```powershell
+   docker-compose up -d --build
+   ```
+3. **Инициализация**:
+   ```powershell
+   docker-compose exec django-app python manage.py migrate
+   docker-compose exec django-app python create_demo_admin.py
+   ```
 
-### Добавление в Cron (авто-бэкап)
-```bash
-crontab -e
-# Добавьте строку для ежедневного бэкапа в 3 часа ночи
-0 3 * * * cd /home/user/photogrametrista && ./backup.sh
-```
+Подробная инструкция для демонстрации: 👉 **[QUICKSTART.md](./QUICKSTART.md)**
 
-### Логи
-```bash
-docker-compose logs -f django-app
-docker-compose logs -f celery-worker
-```
+## 🛰 Интеграция с WebODM
+Система полностью отказалась от упрощенных библиотек (OpenCV) в пользу **WebODM**. 
+- Автоматическая загрузка снимков в NodeODM.
+- Мониторинг прогресса обработки в реальном времени.
+- Скачивание профессиональных артефактов: GeoTIFF, DSM, DTM, PNG-превью.
+- Автоматическая геопривязка результатов на карте Leaflet.
 
-## Мониторинг
-После запуска проекта доступны следующие панели:
-- **Prometheus**: `http://your-server-ip:9090` (сбор метрик)
-- **Grafana**: `http://your-server-ip:3000` (визуализация)
-  - Дефолтный логин: `admin`
-  - Пароль: `admin_secure_password` (задается в `.env`)
+WebODM доступен напрямую по адресу `http://localhost:8002` (логин: `admin`, пароль: `admin`).
 
-### Логи (Loki)
-Логи всех контейнеров автоматически собираются в Loki. Чтобы просмотреть их:
-1. Зайдите в Grafana.
-2. Перейдите в **Explore**.
-3. Выберите источник данных **Loki**.
-4. Используйте Log Browser для выбора нужного контейнера (например, `{container="django-app"}`).
+## 📦 Управление зависимостями (Poetry)
+В проекте используется **Poetry** для строгой фиксации зависимостей. 
+- Установка окружения (локально): `poetry install`
+- Добавление пакета: `poetry add <package>`
+- Запуск тестов: `poetry run pytest`
 
-Для интеграции с Django:
-1. Добавьте `'django_prometheus'` в `INSTALLED_APPS` в `settings.py`.
-2. Добавьте middleware `django_prometheus.middleware.PrometheusBeforeMiddleware` (в начало) и `django_prometheus.middleware.PrometheusAfterMiddleware` (в конец).
-3. Добавьте `path('', include('django_prometheus.urls'))` в `urls.py`.
+---
 
-## CI/CD
-В проекте настроен GitHub Actions (`.github/workflows/deploy.yml`). 
-Для работы добавьте следующие секреты в ваш GitHub репозиторий:
-- `SERVER_HOST`: IP вашего сервера
-- `SERVER_USER`: Пользователь (напр. root)
-- `SSH_PRIVATE_KEY`: Приватный SSH ключ для доступа к серверу
-
-## Разработка
-Для запуска локально в режиме разработки (с горячей перезагрузкой):
-1. Измените `DEBUG=True` в `.env`
-2. Переопределите `command` в `docker-compose.override.yml` на `python manage.py runserver 0.0.0.0:8000`
-
-## Особенности (Features)
+## 🌟 Основные возможности (60+ функций)
 1. **Многопользовательская среда**: Изоляция проектов и данных между пользователями.
 2. **Продвинутая ГИС-визуализация**:
    - Кластеризация сотен фотографий на карте для высокой производительности.

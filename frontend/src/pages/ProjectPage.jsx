@@ -1359,7 +1359,7 @@ const ProjectPage = ({ publicMode = false }) => {
                                     startIcon={<ViewInArIcon />}
                                     sx={{ py: 1.5, fontWeight: 'bold' }}
                                 >
-                                    ПОЛНЫЙ ЦИКЛ (3D + Орто)
+                                    ЗАПУСТИТЬ WEBODM (Профи)
                                 </Button>
                                 <Button 
                                     variant="contained" 
@@ -2415,7 +2415,7 @@ const ProjectPage = ({ publicMode = false }) => {
       <Box
         sx={{ 
           position: 'fixed', 
-          bottom: 20, 
+          bottom: 120, 
           left: 20, 
           zIndex: 2000, 
           display: 'flex', 

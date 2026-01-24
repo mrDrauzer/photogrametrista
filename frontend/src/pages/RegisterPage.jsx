@@ -47,7 +47,7 @@ const RegisterPage = () => {
             background: 'radial-gradient(circle, #1a1a1a 0%, #000000 100%)'
         }}>
             <Container maxWidth="xs">
-                <Paper sx={{ p: 4, bgcolor: '#1e1e1e', border: '1px solid #333', color: 'white' }}>
+                <Paper sx={{ p: 4, bgcolor: '#1e1e1e', border: '1px solid #333', color: 'white', mt: -6.25 }}>
                     <Typography variant="h5" align="center" gutterBottom sx={{ fontWeight: 'bold', color: 'primary.main' }}>
                         РЕГИСТРАЦИЯ
                     </Typography>

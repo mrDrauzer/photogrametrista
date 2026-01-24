@@ -1,15 +1,17 @@
 import os
+
 import django
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'photogrametrista.settings')
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "photogrametrista.settings")
 django.setup()
 
 from django.contrib.auth.models import User
-from core.models import UserProfile, ProjectTemplate
 
-username = 'admin'
-email = 'admin@example.com'
-password = 'admin'
+from core.models import ProjectTemplate, UserProfile
+
+username = "admin"
+email = "admin@example.com"
+password = "admin"
 
 if not User.objects.filter(username=username).exists():
     user = User.objects.create_superuser(username, email, password)
@@ -21,11 +23,7 @@ else:
 # Ensure profile is created or updated
 profile, created = UserProfile.objects.get_or_create(
     user=user,
-    defaults={
-        'max_projects': 100,
-        'max_storage_gb': 50.0,
-        'can_use_ai': True
-    }
+    defaults={"max_projects": 100, "max_storage_gb": 50.0, "can_use_ai": True},
 )
 if created:
     print(f"UserProfile for '{username}' created.")
@@ -38,15 +36,14 @@ else:
 
 # Seed default templates
 templates = [
-    ('Маркшейдерия', 'Шаблон для маркшейдерских работ'),
-    ('Строительство', 'Шаблон для мониторинга стройки'),
-    ('Сельское хозяйство', 'Анализ вегетационных индексов и состояния посевов'),
+    ("Маркшейдерия", "Шаблон для маркшейдерских работ"),
+    ("Строительство", "Шаблон для мониторинга стройки"),
+    ("Сельское хозяйство", "Анализ вегетационных индексов и состояния посевов"),
 ]
 
 for name, desc in templates:
     t, created = ProjectTemplate.objects.get_or_create(
-        name=name,
-        defaults={'description': desc}
+        name=name, defaults={"description": desc}
     )
     if created:
         print(f"Template '{name}' created.")
