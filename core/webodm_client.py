@@ -77,6 +77,16 @@ class WebODMClient:
             print(f"Error getting WebODM task status: {e}")
             return None
 
+    def get_task_output(self, project_id, task_id, line=0):
+        url = f"{self.base_url}/api/projects/{project_id}/tasks/{task_id}/output/"
+        try:
+            response = requests.get(url, headers=self.get_headers(), params={"line": line}, timeout=10)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            print(f"Error getting WebODM task output: {e}")
+            return None
+
     def download_artifact(self, project_id, task_id, artifact_name, output_path):
         """
         artifact_name examples: 'orthophoto.tif', 'dsm.tif', 'all.zip'

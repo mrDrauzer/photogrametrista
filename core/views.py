@@ -356,6 +356,62 @@ class ProjectViewSet(viewsets.ModelViewSet):
         return Response(ProjectSerializer(project).data)
 
     @action(detail=True, methods=["post"])
+    def upload_geotiff(self, request, pk=None):
+        project = self.get_object()
+        tif_file = request.FILES.get("file")
+        if not tif_file:
+            return Response({"error": "No file uploaded"}, status=400)
+
+        # Сохраняем файл временно
+        from django.core.files.storage import default_storage
+        path = default_storage.save(f"temp/{tif_file.name}", tif_file)
+        full_path = default_storage.path(path)
+
+        try:
+            # Извлекаем координаты через GDAL
+            from django.contrib.gis.gdal import GDALRaster
+            from django.contrib.gis.geos import Polygon
+            
+            ds = GDALRaster(full_path)
+            extent = ds.extent # (xmin, ymin, xmax, ymax)
+            poly = Polygon.from_bbox(extent)
+            
+            # Создаем ортофото
+            from django.utils import timezone
+            import os
+            import shutil
+            
+            final_name = f"manual_ortho_{project.id}_{int(timezone.now().timestamp())}.tif"
+            media_artifacts_dir = os.path.join(settings.MEDIA_ROOT, "artifacts")
+            os.makedirs(media_artifacts_dir, exist_ok=True)
+            final_path = os.path.join(media_artifacts_dir, final_name)
+            
+            shutil.copy(full_path, final_path)
+            
+            ortho = Orthophoto.objects.create(
+                project=project,
+                name=tif_file.name,
+                file_path=f"artifacts/{final_name}",
+                bounds=poly,
+                resolution=0.05 # Примерно
+            )
+            
+            Artifact.objects.create(
+                project=project,
+                artifact_type="ORTHOPHOTO",
+                file=f"artifacts/{final_name}",
+                name=tif_file.name,
+                metadata={"manual_upload": True, "bounds": json.loads(poly.geojson)}
+            )
+            
+            return Response({"status": "GeoTIFF uploaded and georeferenced"})
+        except Exception as e:
+            return Response({"error": f"Failed to process GeoTIFF: {str(e)}"}, status=500)
+        finally:
+            if os.path.exists(full_path):
+                os.remove(full_path)
+
+    @action(detail=True, methods=["post"])
     def run_processing(self, request, pk=None):
         project = self.get_object()
         quality = request.data.get("quality", "MEDIUM")

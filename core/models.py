@@ -137,6 +137,7 @@ class Task(models.Model):
         ("PENDING", _("Ожидание")),
         ("PROCESSING", _("Обработка")),
         ("COMPLETED", _("Завершено")),
+        ("PARTIAL", _("Частично")),
         ("FAILED", _("Ошибка")),
     ]
 

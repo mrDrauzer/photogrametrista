@@ -88,6 +88,15 @@ export const exportOrthophoto = (id, format = 'geotiff') => api.get(`orthophotos
 
 export const runProjectProcessing = (id, quality = 'MEDIUM', branchId = null, orthoOnly = false, taskName = null) => 
     api.post(`projects/${id}/run_processing/`, { quality, branch_id: branchId, ortho_only: orthoOnly, task_name: taskName });
+
+export const uploadGeoTiff = (projectId, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.post(`projects/${projectId}/upload_geotiff/`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+    });
+};
+
 export const importProjectPhotos = (id, folderPath) => api.post(`projects/${id}/import_photos/`, { folder_path: folderPath });
 export const generateProjectReport = (id) => api.post(`projects/${id}/generate_report/`);
 export const exportProjectData = (id, format = 'ZIP') => api.post(`projects/${id}/export_data/`, { format });

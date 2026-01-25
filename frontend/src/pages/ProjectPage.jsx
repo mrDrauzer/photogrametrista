@@ -44,7 +44,7 @@ import {
   fetchGcps, createGcp, deleteGcp, updatePresence,
   fetchSurveys, createSurvey, deleteSurvey, uploadSurveyPoint,
   fetchBranches, createBranch, deleteBranch,
-  generateContours, simplifyMesh,
+  generateContours, simplifyMesh, uploadGeoTiff,
   fetchFlightPlans, createFlightPlan, deleteFlightPlan, addFlightWaypoint, exportFlightKml,
   fetchProjectTimeline, fetchTemplates, fetchCrsDefinitions, fetchActivityLogs,
   fetchCategories, createCategory, deleteCategory, updateProjectCategory,
@@ -500,6 +500,21 @@ const ProjectPage = ({ publicMode = false }) => {
     }
   };
 
+  const handleGeoTiffUpload = (e) => {
+    const file = e.target.files[0];
+    if (file && selectedProject) {
+        setLoading(true);
+        uploadGeoTiff(selectedProject.id, file).then(() => {
+            showToast('GeoTIFF успешно подгружен как новый слой', 'success');
+            handleSelectProject(selectedProject);
+        }).catch(err => {
+            showToast('Ошибка при загрузке GeoTIFF: ' + (err.response?.data?.error || err.message), 'error');
+        }).finally(() => {
+            setLoading(false);
+        });
+    }
+  };
+
   const handleRunBatchProcessing = () => {
     if (projects.length === 0) return;
     const ids = prompt('Введите ID проектов через запятую для пакетной обработки:', projects.slice(0, 3).map(p => p.id).join(', '));
@@ -787,6 +802,22 @@ const ProjectPage = ({ publicMode = false }) => {
     if (!fileList || !selectedProject) return;
 
     const filesToUpload = Array.from(fileList);
+
+    // СПЕЦИАЛЬНАЯ ОБРАБОТКА ДЛЯ GEOTIFF
+    if (filesToUpload.length === 1 && (filesToUpload[0].name.toLowerCase().endsWith('.tif') || filesToUpload[0].name.toLowerCase().endsWith('.tiff'))) {
+        if (window.confirm('Это GeoTIFF файл. Хотите загрузить его как готовый ортофотоплан с геопривязкой?')) {
+            const formData = new FormData();
+            formData.append('file', filesToUpload[0]);
+            api.post(`projects/${selectedProject.id}/upload_geotiff/`, formData, {
+                headers: { 'Content-Type': 'multipart/form-data' }
+            }).then(() => {
+                showToast('GeoTIFF успешно загружен и привязан к карте', 'success');
+                refreshData();
+            }).catch(err => showToast('Ошибка при обработке GeoTIFF: ' + err.message, 'error'));
+            return;
+        }
+    }
+
     const totalFiles = filesToUpload.length;
     let completedFiles = 0;
 
@@ -1385,6 +1416,23 @@ const ProjectPage = ({ publicMode = false }) => {
                     <Grid item xs={12}>
                         <Button variant="outlined" fullWidth onClick={handleImportPhotos} sx={{ mb: 1 }}>
                             Импорт из облака
+                        </Button>
+                    </Grid>
+                    <Grid item xs={12}>
+                        <Button
+                            variant="outlined"
+                            component="label"
+                            fullWidth
+                            startIcon={<MapIcon />}
+                            color="success"
+                        >
+                            Подгрузить GeoTIFF
+                            <input
+                                type="file"
+                                hidden
+                                accept=".tif,.tiff"
+                                onChange={handleGeoTiffUpload}
+                            />
                         </Button>
                     </Grid>
                     <Grid item xs={12}>

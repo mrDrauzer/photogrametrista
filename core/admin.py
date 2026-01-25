@@ -1,8 +1,10 @@
 from django.contrib import admin
 
 from .models import (Artifact, DetectedObject, Notification, Organization,
-                     Project, ProjectFile, QualityMetric, Task, UserProfile)
+                     Project, ProjectFile, QualityMetric, Task, UserProfile,
+                     Orthophoto, GCP, CRSDefinition, ProjectTemplate, ProjectCategory)
 
+from django.contrib.gis import admin as gis_admin
 
 @admin.register(QualityMetric)
 class QualityMetricAdmin(admin.ModelAdmin):
@@ -63,3 +65,23 @@ class NotificationAdmin(admin.ModelAdmin):
 class ArtifactAdmin(admin.ModelAdmin):
     list_display = ("artifact_type", "project", "created_at")
     list_filter = ("artifact_type", "project")
+
+@admin.register(Orthophoto)
+class OrthophotoAdmin(gis_admin.OSMGeoAdmin):
+    list_display = ("name", "project", "created_at")
+
+@admin.register(GCP)
+class GCPAdmin(gis_admin.OSMGeoAdmin):
+    list_display = ("name", "project", "created_at")
+
+@admin.register(CRSDefinition)
+class CRSDefinitionAdmin(admin.ModelAdmin):
+    list_display = ("name", "epsg_code")
+
+@admin.register(ProjectTemplate)
+class ProjectTemplateAdmin(admin.ModelAdmin):
+    list_display = ("name", "created_at")
+
+@admin.register(ProjectCategory)
+class ProjectCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner", "created_at")

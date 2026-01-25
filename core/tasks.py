@@ -239,12 +239,24 @@ def process_photogrammetry(
         ortho_res = project.ortho_resolution or 5.0
         dsm_res = project.dsm_resolution or 5.0
         
-        options = [
-            {"name": "feature-quality", "value": "medium" if quality == "MEDIUM" else ("high" if quality == "HIGH" else "lowest")},
-            {"name": "orthophoto-resolution", "value": str(ortho_res)},
-            {"name": "dsm", "value": "true"},
-            {"name": "dtm", "value": "true"},
-        ]
+        if ortho_only:
+            # Оптимизация для режима "Только ортофото" (быстрый режим)
+            # Согласно требованиям: auto-boundary:true, fast-orthophoto:true
+            options = [
+                {"name": "fast-orthophoto", "value": "true"},
+                {"name": "auto-boundary", "value": "true"},
+                {"name": "rerun-all", "value": "true"},
+            ]
+            task_record.logs += "[INFO] Режим: Быстрое ортофото (fast-orthophoto)\n"
+        else:
+            options = [
+                {"name": "feature-quality", "value": "medium" if quality == "MEDIUM" else ("high" if quality == "HIGH" else "lowest")},
+                {"name": "orthophoto-resolution", "value": str(ortho_res)},
+                {"name": "dsm", "value": "true"},
+                {"name": "dtm", "value": "true"},
+                {"name": "rerun-all", "value": "true"},
+            ]
+            task_record.logs += f"[INFO] Режим: Полная реконструкция (Качество: {quality})\n"
         
         task_record.logs += f"[INFO] Отправка {len(images)} снимков в WebODM...\n"
         task_record.save()
@@ -280,11 +292,31 @@ def process_photogrammetry(
             if isinstance(wo_status_obj, dict):
                 wo_status = wo_status_obj.get("name", "QUEUED")
             elif isinstance(wo_status_obj, int):
-                # Маппинг числовых статусов WebODM: 10=RUNNING, 20=COMPLETED, 30=FAILED, 40=CANCELED
-                status_map = {10: "RUNNING", 20: "COMPLETED", 30: "FAILED", 40: "CANCELED"}
+                # Маппинг числовых статусов WebODM согласно документации:
+                # QUEUED = 10, RUNNING = 20, FAILED = 30, COMPLETED = 40, CANCELED = 50
+                # ВАЖНО: 50 (CANCELED) мы маппим в RUNNING, чтобы полностью исключить его из логики прерывания.
+                status_map = {10: "QUEUED", 20: "RUNNING", 30: "FAILED", 40: "COMPLETED", 50: "RUNNING"}
                 wo_status = status_map.get(wo_status_obj, "RUNNING")
             
+            # Если статус CANCELED (50), мы его полностью игнорируем и считаем как RUNNING
+            # для того, чтобы цикл продолжался до появления признаков завершения в логах
+            if isinstance(wo_status_obj, int) and wo_status_obj == 50:
+                if "[INFO] Статус CANCELED (50) игнорируется" not in task_record.logs:
+                    task_record.logs += "[INFO] Получен статус CANCELED (50) от WebODM. Игнорируем его и продолжаем ожидание окончания...\n"
+                    task_record.save()
+                wo_status = "RUNNING"
+            elif isinstance(wo_status_obj, dict) and wo_status_obj.get("name") == "CANCELED":
+                if "[INFO] Статус CANCELED игнорируется" not in task_record.logs:
+                    task_record.logs += "[INFO] Получен строковый статус CANCELED от WebODM. Игнорируем его...\n"
+                    task_record.save()
+                wo_status = "RUNNING"
+            
             progress = status_data.get("progress", 0)
+            running_progress = status_data.get("running_progress", 0)
+
+            # КРИТИЧЕСКАЯ ПРОВЕРКА: WebODM может выдать статус 20 (RUNNING) или другие коды.
+            # Мы считаем задачу реально завершенной только если статус COMPLETED (40).
+            # Если WebODM присылает COMPLETED, но файлы еще не готовы, мы это увидим ниже.
 
             if progress != last_progress:
                 task_record.progress = int(progress)
@@ -292,15 +324,73 @@ def process_photogrammetry(
                 task_record.save()
                 last_progress = progress
 
-            if wo_status == "COMPLETED" or (wo_status == "FAILED" and progress > 90):
-                if wo_status == "FAILED":
-                    task_record.logs += "[WARNING] WebODM завершился с ошибкой на финальном этапе (отчет), но основные данные готовы. Начинаю скачивание...\n"
+            # Проверяем логи WebODM на наличие финального сообщения
+            is_done_by_logs = False
+            try:
+                output_data = client.get_task_output(wo_project_id, wo_task_id)
+                if output_data and "output" in output_data:
+                    # Ищем характерные признаки завершения в консоли
+                    if any(marker in str(output_data["output"]) for marker in ["Postprocessing: done", "odm_orthophoto.tif", "textured_model.glb"]):
+                        is_done_by_logs = True
+                        if wo_status in ["FAILED", "RUNNING"]: # CANCELED теперь RUNNING
+                            # Определяем, был ли это реально CANCELED
+                            is_actually_canceled = (isinstance(wo_status_obj, int) and wo_status_obj == 50) or \
+                                                 (isinstance(wo_status_obj, dict) and wo_status_obj.get("name") == "CANCELED")
+                            
+                            status_label = "CANCELED" if is_actually_canceled else wo_status
+                            task_record.logs += f"[INFO] Обнаружены признаки завершения в логах WebODM (несмотря на статус {status_label}).\n"
+                            task_record.save()
+            except:
+                pass
+
+            if wo_status == "COMPLETED" or is_done_by_logs or (wo_status == "FAILED" and progress >= 95):
+                if wo_status == "FAILED" or is_done_by_logs:
+                    # Если мы здесь по логам или при FAILED, но с прогрессом
+                    is_actually_canceled = (isinstance(wo_status_obj, int) and wo_status_obj == 50) or \
+                                         (isinstance(wo_status_obj, dict) and wo_status_obj.get("name") == "CANCELED")
+                    
+                    status_for_log = "CANCELED" if is_actually_canceled else wo_status
+                    
+                    if not (wo_status == "COMPLETED"):
+                         task_record.logs += f"[WARNING] WebODM завершился со статусом {status_for_log}, но прогресс {progress}% или в логах 'done'. Ожидание финализации файлов (до 30 сек)...\n"
+                         task_record.save()
+                    
+                    # Цикл ожидания появления признаков готовности
+                    found = False
+                    if not (wo_status == "COMPLETED" and not is_done_by_logs):
+                        for attempt in range(6):  # 6 попыток по 5 секунд = 30 секунд
+                            try:
+                                time.sleep(5)
+                                task_record.logs += f"[INFO] Проверка готовности (попытка {attempt+1}/6)...\n"
+                                task_record.save()
+                                
+                                # Проверяем логи
+                                output_data = client.get_task_output(wo_project_id, wo_task_id)
+                                if output_data and "output" in output_data:
+                                    if any(marker in str(output_data["output"]) for marker in ["Postprocessing: done", "odm_orthophoto.tif", "textured_model.glb"]):
+                                        found = True
+                                        break
+                            except:
+                                continue
+                    else:
+                        found = True
+                    
+                    if found:
+                        task_record.logs += "[INFO] Признаки готовности обнаружены, перехожу к скачиванию.\n"
+                    else:
+                        task_record.logs += "[WARNING] Признаки готовности не подтверждены, но пробую скачать принудительно.\n"
+                    task_record.save()
                 else:
                     task_record.logs += "[INFO] WebODM завершил обработку. Скачивание результатов...\n"
                 task_record.save()
                 break
-            elif wo_status in ["FAILED", "CANCELED"]:
-                task_record.logs += f"[ERROR] WebODM задача завершилась со статусом: {wo_status}\n"
+            elif wo_status == "QUEUED" or wo_status == "RUNNING":
+                time.sleep(10)
+                continue
+            elif wo_status == "FAILED":
+                # Сюда попадем только если progress < 95 и is_done_by_logs = False
+                task_record.logs += f"[ERROR] WebODM задача завершилась со статусом: {wo_status} (Прогресс: {progress}%, Running: {running_progress})\n"
+                task_record.logs += f"[DEBUG] Данные статуса при ошибке: {json.dumps(status_data)}\n"
                 task_record.status = "FAILED"
                 task_record.save()
                 return f"WebODM task {wo_status}"
@@ -358,7 +448,9 @@ def process_photogrammetry(
         ortho_bounds = project.area or Polygon.from_bbox((30.0, 50.0, 30.1, 50.1))
 
         # Регистрация результатов, если они физически скачались
+        files_downloaded = []
         if os.path.exists(ortho_png_path):
+            files_downloaded.append("PNG preview")
             ortho_obj = Orthophoto.objects.create(
                 project=project,
                 name=task_display_name,
@@ -392,6 +484,7 @@ def process_photogrammetry(
             )
 
         if os.path.exists(model_path):
+            files_downloaded.append("3D GLB model")
             Artifact.objects.create(
                 project=project,
                 task=task_record,
@@ -403,7 +496,19 @@ def process_photogrammetry(
                 metadata={"engine": "WebODM", "format": "GLB"}
             )
 
-        task_record.status = "COMPLETED"
+        if not files_downloaded:
+            task_record.logs += "[ERROR] Ни один целевой файл не был скачан (ни PNG, ни GLB).\n"
+            task_record.status = "FAILED"
+            task_record.save()
+            return f"WebODM task finished but no artifacts downloaded"
+
+        if len(files_downloaded) < (1 if ortho_only else 2):
+            task_record.status = "PARTIAL"
+            task_record.logs += f"[WARNING] Задача завершена частично. Скачано: {', '.join(files_downloaded)}\n"
+        else:
+            task_record.status = "COMPLETED"
+            task_record.logs += f"[INFO] Все ожидаемые файлы успешно скачаны: {', '.join(files_downloaded)}\n"
+        
         task_record.progress = 100
         task_record.save()
 
@@ -554,8 +659,6 @@ def process_photogrammetry_LEGACY(
 
     # Создаем bounds для Orthophoto (Polygon)
     # Если области проекта нет, создаем полигон на основе рассчитанных масштабов
-    from django.contrib.gis.geos import Polygon
-
     if project.area:
         ortho_bounds = project.area
     else:
